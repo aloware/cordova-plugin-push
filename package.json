@@ -1,7 +1,7 @@
 {
-  "name": "@havesource/cordova-plugin-push",
-  "version": "2.0.1-dev.0",
-  "description": "Register and receive push notifications.",
+  "name": "cordova-aloware-push-plugin",
+  "version": "2.1.0",
+  "description": "Register and receive push notifications for aloware use.",
   "scripts": {
     "build": "babel src/js --out-dir www",
     "build:watch": "nodemon -w ./src/js -e js -x npm run build",
@@ -11,7 +11,7 @@
     "precommit-msg": "echo 'Pre-commit checks...' && exit 0",
     "test": "npm run build && npm run lint && npm run jasmine"
   },
-  "repository": "github:havesource/cordova-plugin-push",
+  "repository": "git@github.com:aloware/cordova-plugin-twiliovoicesdk.git",
   "keywords": [
     "ecosystem:cordova",
     "cordova-ios",
@@ -19,10 +19,10 @@
     "cordova-windows",
     "cordova-browser"
   ],
-  "author": "Erisu",
+  "author": "Aloware",
   "license": "MIT",
-  "bugs": "https://github.com/havesource/cordova-plugin-push/issues",
-  "homepage": "https://github.com/havesource/cordova-plugin-push#readme",
+  "bugs": "https://github.com/aloware/cordova-plugin-twiliovoicesdk/issues",
+  "homepage": "https://github.com/aloware/cordova-plugin-twiliovoicesdk#readme",
   "devDependencies": {
     "@babel/cli": "^7.12.10",
     "@babel/core": "^7.12.10",
@@ -52,7 +52,7 @@
   },
   "types": "./types/index.d.ts",
   "cordova": {
-    "id": "@havesource/cordova-plugin-push",
+    "id": "cordova-aloware-push-plugin",
     "platforms": [
       "ios",
       "android",

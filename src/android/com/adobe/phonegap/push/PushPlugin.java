@@ -12,11 +12,10 @@ import android.media.AudioAttributes;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.support.v4.app.NotificationCompat;
-import android.support.v4.app.NotificationManagerCompat;
 import android.util.Log;
 
-import com.google.firebase.iid.FirebaseInstanceId;
+import com.google.android.gms.tasks.OnCompleteListener;
+import com.google.android.gms.tasks.Task;
 import com.google.firebase.messaging.FirebaseMessaging;
 
 import org.apache.cordova.CallbackContext;
@@ -34,6 +33,10 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.ArrayList;
 import java.util.List;
+
+import androidx.annotation.NonNull;
+import androidx.core.app.NotificationCompat;
+import androidx.core.app.NotificationManagerCompat;
 
 import me.leolin.shortcutbadger.ShortcutBadger;
 
@@ -105,7 +108,7 @@ public class PushPlugin extends CordovaPlugin implements PushConstants {
       NotificationChannel mChannel = new NotificationChannel(
         channel.getString(CHANNEL_ID),
         channel.optString(CHANNEL_DESCRIPTION, appName),
-        channel.optInt(CHANNEL_IMPORTANCE, NotificationManager.IMPORTANCE_DEFAULT)
+        channel.optInt(CHANNEL_IMPORTANCE, NotificationManager.IMPORTANCE_MAX)
       );
 
       int lightColor = channel.optInt(CHANNEL_LIGHT_COLOR, -1);
@@ -195,146 +198,153 @@ public class PushPlugin extends CordovaPlugin implements PushConstants {
     gWebView = this.webView;
 
     if (INITIALIZE.equals(action)) {
-      cordova.getThreadPool().execute(new Runnable() {
-        public void run () {
-          pushContext = callbackContext;
-          JSONObject jo = null;
-
-          Log.v(LOG_TAG, "execute: data=" + data.toString());
-          SharedPreferences sharedPref = getApplicationContext().getSharedPreferences(
-            COM_ADOBE_PHONEGAP_PUSH,
-            Context.MODE_PRIVATE
-          );
-          String token = null;
-          String senderID = null;
-
-          try {
-            jo = data.getJSONObject(0).getJSONObject(ANDROID);
-
-            // If no NotificationChannels exist create the default one
-            createDefaultNotificationChannelIfNeeded(jo);
-
-            Log.v(LOG_TAG, "execute: jo=" + jo.toString());
-
-            senderID = getStringResourceByName(GCM_DEFAULT_SENDER_ID);
-
-            Log.v(LOG_TAG, "execute: senderID=" + senderID);
-
-            try {
-              token = FirebaseInstanceId.getInstance().getToken();
-            } catch (IllegalStateException e) {
-              Log.e(LOG_TAG, "Exception raised while getting Firebase token " + e.getMessage());
-            }
-
-            if (token == null) {
-              try {
-                token = FirebaseInstanceId.getInstance().getToken(senderID, FCM);
-              } catch (IllegalStateException e) {
-                Log.e(LOG_TAG, "Exception raised while getting Firebase token " + e.getMessage());
-              }
-            }
-
-            if (!"".equals(token)) {
-              JSONObject json = new JSONObject().put(REGISTRATION_ID, token);
-              json.put(REGISTRATION_TYPE, FCM);
-
-              Log.v(LOG_TAG, "onRegistered: " + json.toString());
-
-              JSONArray topics = jo.optJSONArray(TOPICS);
-              subscribeToTopics(topics, registration_id);
-
-              PushPlugin.sendEvent(json);
-            } else {
-              callbackContext.error("Empty registration ID received from FCM");
+      try {
+        FirebaseMessaging.getInstance().getToken().addOnCompleteListener(new OnCompleteListener<String>() {
+          @Override
+          public void onComplete(@NonNull Task<String> task) {
+            if (!task.isSuccessful()) {
               return;
             }
-          } catch (JSONException e) {
-            Log.e(LOG_TAG, "execute: Got JSON Exception " + e.getMessage());
-            callbackContext.error(e.getMessage());
-          } catch (IOException e) {
-            Log.e(LOG_TAG, "execute: Got IO Exception " + e.getMessage());
-            callbackContext.error(e.getMessage());
-          } catch (Resources.NotFoundException e) {
+            // Get new FCM registration token
+            cordova.getThreadPool().execute(new Runnable() {
+              public void run () {
+                pushContext = callbackContext;
+                JSONObject jo = null;
 
-            Log.e(LOG_TAG, "execute: Got Resources NotFoundException " + e.getMessage());
-            callbackContext.error(e.getMessage());
-          }
+                Log.v(LOG_TAG, "execute: data=" + data.toString());
+                SharedPreferences sharedPref = getApplicationContext().getSharedPreferences(
+                  COM_ADOBE_PHONEGAP_PUSH,
+                  Context.MODE_PRIVATE
+                );
+                String token = null;
+                String senderID = null;
 
-          if (jo != null) {
-            SharedPreferences.Editor editor = sharedPref.edit();
-            try {
-              editor.putString(ICON, jo.getString(ICON));
-            } catch (JSONException e) {
-              Log.d(LOG_TAG, "no icon option");
-            }
-            try {
-              editor.putString(ICON_COLOR, jo.getString(ICON_COLOR));
-            } catch (JSONException e) {
-              Log.d(LOG_TAG, "no iconColor option");
-            }
+                token = task.getResult();
 
-            boolean clearBadge = jo.optBoolean(CLEAR_BADGE, false);
-            if (clearBadge) {
-              setApplicationIconBadgeNumber(getApplicationContext(), 0);
-            }
+                try {
+                  jo = data.getJSONObject(0).getJSONObject(ANDROID);
 
-            editor.putBoolean(SOUND, jo.optBoolean(SOUND, true));
-            editor.putBoolean(VIBRATE, jo.optBoolean(VIBRATE, true));
-            editor.putBoolean(CLEAR_BADGE, clearBadge);
-            editor.putBoolean(CLEAR_NOTIFICATIONS, jo.optBoolean(CLEAR_NOTIFICATIONS, true));
-            editor.putBoolean(FORCE_SHOW, jo.optBoolean(FORCE_SHOW, false));
-            editor.putString(SENDER_ID, senderID);
-            editor.putString(MESSAGE_KEY, jo.optString(MESSAGE_KEY));
-            editor.putString(TITLE_KEY, jo.optString(TITLE_KEY));
-            editor.commit();
+                  // If no NotificationChannels exist create the default one
+                  createDefaultNotificationChannelIfNeeded(jo);
 
-          }
+                  Log.v(LOG_TAG, "execute: jo=" + jo.toString());
 
-          if (!gCachedExtras.isEmpty()) {
-            Log.v(LOG_TAG, "sending cached extras");
-            synchronized (gCachedExtras) {
-              Iterator<Bundle> gCachedExtrasIterator = gCachedExtras.iterator();
-              while (gCachedExtrasIterator.hasNext()) {
-                sendExtras(gCachedExtrasIterator.next());
+                  senderID = getStringResourceByName(GCM_DEFAULT_SENDER_ID);
+
+                  Log.v(LOG_TAG, "execute: senderID=" + senderID);
+
+                  if (!"".equals(token)) {
+                    JSONObject json = new JSONObject().put(REGISTRATION_ID, token);
+                    json.put(REGISTRATION_TYPE, FCM);
+
+                    Log.v(LOG_TAG, "onRegistered: " + json.toString());
+
+                    JSONArray topics = jo.optJSONArray(TOPICS);
+                    subscribeToTopics(topics, registration_id);
+
+                    PushPlugin.sendEvent(json);
+                  } else {
+                    callbackContext.error("Empty registration ID received from FCM");
+                    return;
+                  }
+                } catch (JSONException e) {
+                  Log.e(LOG_TAG, "execute: Got JSON Exception " + e.getMessage());
+                  callbackContext.error(e.getMessage());
+                } catch (Resources.NotFoundException e) {
+
+                  Log.e(LOG_TAG, "execute: Got Resources NotFoundException " + e.getMessage());
+                  callbackContext.error(e.getMessage());
+                }
+
+                if (jo != null) {
+                  SharedPreferences.Editor editor = sharedPref.edit();
+                  try {
+                    editor.putString(ICON, jo.getString(ICON));
+                  } catch (JSONException e) {
+                    Log.d(LOG_TAG, "no icon option");
+                  }
+                  try {
+                    editor.putString(ICON_COLOR, jo.getString(ICON_COLOR));
+                  } catch (JSONException e) {
+                    Log.d(LOG_TAG, "no iconColor option");
+                  }
+
+                  boolean clearBadge = jo.optBoolean(CLEAR_BADGE, false);
+                  if (clearBadge) {
+                    setApplicationIconBadgeNumber(getApplicationContext(), 0);
+                  }
+
+                  editor.putBoolean(SOUND, jo.optBoolean(SOUND, true));
+                  editor.putBoolean(VIBRATE, jo.optBoolean(VIBRATE, true));
+                  editor.putBoolean(CLEAR_BADGE, clearBadge);
+                  editor.putBoolean(CLEAR_NOTIFICATIONS, jo.optBoolean(CLEAR_NOTIFICATIONS, true));
+                  editor.putBoolean(FORCE_SHOW, jo.optBoolean(FORCE_SHOW, false));
+                  editor.putString(SENDER_ID, senderID);
+                  editor.putString(MESSAGE_KEY, jo.optString(MESSAGE_KEY));
+                  editor.putString(TITLE_KEY, jo.optString(TITLE_KEY));
+                  editor.commit();
+
+                }
+
+                if (!gCachedExtras.isEmpty()) {
+                  Log.v(LOG_TAG, "sending cached extras");
+                  synchronized (gCachedExtras) {
+                    Iterator<Bundle> gCachedExtrasIterator = gCachedExtras.iterator();
+                    while (gCachedExtrasIterator.hasNext()) {
+                      sendExtras(gCachedExtrasIterator.next());
+                    }
+                  }
+                  gCachedExtras.clear();
+                }
               }
-            }
-            gCachedExtras.clear();
+            });
           }
-        }
-      });
+        });
+      } catch (IllegalStateException e) {
+        Log.e(LOG_TAG, "Exception raised while getting Firebase token " + e.getMessage());
+      }
+
     } else if (UNREGISTER.equals(action)) {
-      cordova.getThreadPool().execute(new Runnable() {
-        public void run () {
-          try {
-            SharedPreferences sharedPref = getApplicationContext().getSharedPreferences(
-              COM_ADOBE_PHONEGAP_PUSH,
-              Context.MODE_PRIVATE
-            );
-            JSONArray topics = data.optJSONArray(0);
-            if (topics != null && !"".equals(registration_id)) {
-              unsubscribeFromTopics(topics, registration_id);
-            } else {
-              FirebaseInstanceId.getInstance().deleteInstanceId();
-              Log.v(LOG_TAG, "UNREGISTER");
-
-              // Remove shared prefs
-              SharedPreferences.Editor editor = sharedPref.edit();
-              editor.remove(SOUND);
-              editor.remove(VIBRATE);
-              editor.remove(CLEAR_BADGE);
-              editor.remove(CLEAR_NOTIFICATIONS);
-              editor.remove(FORCE_SHOW);
-              editor.remove(SENDER_ID);
-              editor.commit();
+      try {
+        FirebaseMessaging.getInstance().getToken().addOnCompleteListener(new OnCompleteListener<String>() {
+          @Override
+          public void onComplete(@NonNull Task<String> task) {
+            if (!task.isSuccessful()) {
+              return;
             }
+            // Get new FCM registration token
+            cordova.getThreadPool().execute(new Runnable() {
+              public void run () {
+                SharedPreferences sharedPref = getApplicationContext().getSharedPreferences(
+                  COM_ADOBE_PHONEGAP_PUSH,
+                  Context.MODE_PRIVATE
+                );
+                JSONArray topics = data.optJSONArray(0);
+                if (topics != null && !"".equals(registration_id)) {
+                  unsubscribeFromTopics(topics, registration_id);
+                } else {
+                  Log.v(LOG_TAG, "UNREGISTER");
 
-            callbackContext.success();
-          } catch (IOException e) {
-            Log.e(LOG_TAG, "execute: Got JSON Exception " + e.getMessage());
-            callbackContext.error(e.getMessage());
+                  // Remove shared prefs
+                  SharedPreferences.Editor editor = sharedPref.edit();
+                  editor.remove(SOUND);
+                  editor.remove(VIBRATE);
+                  editor.remove(CLEAR_BADGE);
+                  editor.remove(CLEAR_NOTIFICATIONS);
+                  editor.remove(FORCE_SHOW);
+                  editor.remove(SENDER_ID);
+                  editor.commit();
+                }
+
+                callbackContext.success();
+              }
+            });
           }
-        }
-      });
+        });
+      } catch (IllegalStateException e) {
+        Log.e(LOG_TAG, "Exception raised while getting Firebase token " + e.getMessage());
+      }
+
     } else if (FINISH.equals(action)) {
       callbackContext.success();
     } else if (HAS_PERMISSION.equals(action)) {

@@ -2,8 +2,11 @@ package com.adobe.phonegap.push;
 
 import android.util.Log;
 
-import com.google.firebase.iid.FirebaseInstanceId;
-import com.google.firebase.iid.InstanceIdResult;
+import androidx.annotation.NonNull;
+
+import com.google.android.gms.tasks.OnCompleteListener;
+import com.google.android.gms.tasks.Task;
+import com.google.firebase.messaging.FirebaseMessaging;
 import com.google.firebase.messaging.FirebaseMessagingService;
 import com.google.android.gms.tasks.OnSuccessListener;
 
@@ -14,18 +17,17 @@ public class PushInstanceIDListenerService extends FirebaseMessagingService impl
   public void onNewToken (String s) {
     super.onNewToken(s);
 
-    FirebaseInstanceId.getInstance().getInstanceId()
-      .addOnSuccessListener(new OnSuccessListener<InstanceIdResult>() {
-        @Override
-        public void onSuccess (InstanceIdResult instanceIdResult) {
-          // Get updated InstanceID token.
-          String refreshedToken = instanceIdResult.getToken();
-
-          Log.d(LOG_TAG, "Refreshed token: " + refreshedToken);
-
-          // TODO: Implement this method to send any registration to your app's servers.
-          //sendRegistrationToServer(refreshedToken);
+    FirebaseMessaging.getInstance().getToken().addOnCompleteListener(new OnCompleteListener<String>() {
+      @Override
+      public void onComplete(@NonNull Task<String> task) {
+        if (!task.isSuccessful()) {
+          return;
         }
-      });
+        // Get new FCM registration token
+        String refreshedToken = task.getResult();
+
+        Log.d(LOG_TAG, "Refreshed token: " + refreshedToken);
+      }
+    });
   }
 }

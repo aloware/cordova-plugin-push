@@ -30,15 +30,7 @@
 To install from the command line:
 
 ```bash
-cordova plugin add @havesource/cordova-plugin-push
-```
-
-It is also possible to install via repo url directly (unstable)
-
-or
-
-```bash
-cordova plugin add github:havesource/cordova-plugin-push
+cordova plugin add cordova-aloware-push-plugin
 ```
 
 To configure the `SENDER_ID`, place your `google-services.json` (Android) and/or `GoogleService-Info.plist` in the root folder of your project and then add the following lines into your config.xml.
@@ -74,7 +66,7 @@ By default, on iOS, the plugin will register with APNS. If you want to use FCM o
 > Note: You need to specify the SENDER_ID variable in your config.xml if you plan on installing/restoring plugins using the prepare method. The prepare method will skip installing the plugin otherwise.
 
 ```xml
-<plugin name="@havesource/cordova-plugin-push" spec="2.0.0" />
+<plugin name="cordova-aloware-push-plugin" spec="2.1.0" />
 ```
 
 ### Cordova Android 8.x Specifics

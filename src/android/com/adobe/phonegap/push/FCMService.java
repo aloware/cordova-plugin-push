@@ -1,6 +1,7 @@
 package com.adobe.phonegap.push;
 
 import android.annotation.SuppressLint;
+import android.annotation.TargetApi;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -23,15 +24,27 @@ import android.graphics.Canvas;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.support.v4.app.NotificationCompat;
-import android.support.v4.app.NotificationCompat.WearableExtender;
-import android.support.v4.app.RemoteInput;
 import android.text.Html;
 import android.text.Spanned;
 import android.util.Log;
 
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.annotation.RequiresApi;
+import androidx.core.app.NotificationCompat;
+import androidx.core.app.RemoteInput;
+import androidx.localbroadcastmanager.content.LocalBroadcastManager;
+
+import com.aloware.talk.R;
 import com.google.firebase.messaging.FirebaseMessagingService;
 import com.google.firebase.messaging.RemoteMessage;
+import com.phonegap.plugins.twiliovoice.TwilioVoicePlugin;
+import com.phonegap.plugins.twiliovoice.fcm.VoiceFirebaseMessagingService;
+import com.twilio.voice.CallException;
+import com.twilio.voice.CallInvite;
+import com.twilio.voice.CancelledCallInvite;
+import com.twilio.voice.MessageListener;
+import com.twilio.voice.Voice;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -53,6 +66,11 @@ public class FCMService extends FirebaseMessagingService implements PushConstant
 
   private static final String LOG_TAG = "Push_FCMService";
   private static HashMap<Integer, ArrayList<String>> messageMap = new HashMap<Integer, ArrayList<String>>();
+  private NotificationManager mNotificationManager;
+
+  private static final String NOTIFICATION_ID_KEY = "NOTIFICATION_ID";
+  private static final String CALL_SID_KEY = "CALL_SID";
+  private static final String VOICE_CHANNEL = "default";
 
   public void setNotification (int notId, String message) {
     ArrayList<String> messageList = messageMap.get(notId);
@@ -66,6 +84,12 @@ public class FCMService extends FirebaseMessagingService implements PushConstant
     } else {
       messageList.add(message);
     }
+  }
+
+  @Override
+  public void onCreate() {
+    super.onCreate();
+    mNotificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
   }
 
   @Override
@@ -88,6 +112,33 @@ public class FCMService extends FirebaseMessagingService implements PushConstant
     }
 
     if (extras != null && isAvailableSender(from)) {
+      try{
+        String valuetest = (String) extras.get("twi_message_type");
+        if(valuetest.equals("twilio.voice.call")){
+          if (message.getData().size() > 0) {
+            Map<String, String> data = message.getData();
+            final int notificationId = (int) (System.currentTimeMillis() % Integer.MAX_VALUE);
+            Voice.handleMessage(this, data, new MessageListener()  {
+              @Override
+              public void onCallInvite(CallInvite callInvite) {
+                FCMService.this.notify(callInvite, notificationId);
+                FCMService.this.sendCallInviteToPlugin(callInvite, notificationId);
+              }
+
+              @Override
+              public void onCancelledCallInvite(@NonNull CancelledCallInvite cancelledCallInvite, @Nullable CallException callException) {
+                Log.i(LOG_TAG, "Canceling call invite from: " + cancelledCallInvite.getFrom());
+                FCMService.this.sendCancelledCallToPlugin(notificationId);
+                mNotificationManager.cancel(notificationId);
+              }
+            });
+          }
+        }
+        return;
+      }catch (Exception e){
+        e.printStackTrace();
+      }
+
       Context applicationContext = getApplicationContext();
 
       SharedPreferences prefs = applicationContext.getSharedPreferences(
@@ -351,7 +402,6 @@ public class FCMService extends FirebaseMessagingService implements PushConstant
       PushPlugin.setApplicationIconBadgeNumber(context, badgeCount);
     }
     if (badgeCount == 0) {
-      NotificationManager mNotificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
       mNotificationManager.cancelAll();
     }
 
@@ -387,7 +437,6 @@ public class FCMService extends FirebaseMessagingService implements PushConstant
   }
 
   public void createNotification (Context context, Bundle extras) {
-    NotificationManager mNotificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
     String appName = getAppName(this);
     String packageName = context.getPackageName();
     Resources resources = context.getResources();
@@ -664,7 +713,7 @@ public class FCMService extends FirebaseMessagingService implements PushConstant
           wAction = null;
           pIntent = null;
         }
-        mBuilder.extend(new WearableExtender().addActions(wActions));
+        mBuilder.extend(new NotificationCompat.WearableExtender().addActions(wActions));
         wActions.clear();
       } catch (JSONException e) {
         // nope
@@ -1061,5 +1110,120 @@ public class FCMService extends FirebaseMessagingService implements PushConstant
     Log.d(LOG_TAG, "sender id = " + savedSenderID);
 
     return from.equals(savedSenderID) || from.startsWith("/topics/");
+  }
+
+  private void notify(CallInvite callInvite, int notificationId) {
+    String callSid = callInvite.getCallSid();
+    Intent intent = getPackageManager().getLaunchIntentForPackage(getPackageName());
+    intent.setAction(TwilioVoicePlugin.ACTION_INCOMING_CALL);
+    intent.putExtra(TwilioVoicePlugin.INCOMING_CALL_NOTIFICATION_ID, notificationId);
+    intent.putExtra(TwilioVoicePlugin.INCOMING_CALL_INVITE, callInvite);
+    intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+    PendingIntent pendingIntent =
+      PendingIntent.getActivity(this, notificationId, intent, PendingIntent.FLAG_CANCEL_CURRENT);
+
+    Bundle extras = new Bundle();
+    extras.putInt(NOTIFICATION_ID_KEY, notificationId);
+    extras.putString(CALL_SID_KEY, callSid);
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      buildNotificationUI(notificationId, callInvite.getFrom(), pendingIntent, extras);
+    } else {
+      int iconIdentifier = getResources().getIdentifier("ic_launcher", "mipmap", getPackageName());
+      if (iconIdentifier == 0) {
+        iconIdentifier = getResources().getIdentifier("ic_launcher", "drawable", getPackageName());
+      }
+
+      int incomingCallAppNameId = (int) getResources().getIdentifier("incoming_call_app_name", "string", getPackageName());
+      String contentTitle = getString(incomingCallAppNameId);
+
+      if (contentTitle == null) {
+        contentTitle = "Incoming Call";
+      }
+      final String from = callInvite.getFrom() + " is calling";
+
+      NotificationCompat.Builder notificationBuilder =
+        new NotificationCompat.Builder(this)
+          .setSmallIcon(iconIdentifier)
+          .setContentTitle(contentTitle)
+          .setLargeIcon(BitmapFactory.decodeResource(getResources(), R.mipmap.ic_launcher))
+          .setContentText(getString(incomingCallAppNameId))
+          .setAutoCancel(true)
+          .setExtras(extras)
+          .setContentIntent(pendingIntent)
+          .setGroup(from)
+          .setColor(Color.rgb(225, 0, 0));
+
+      mNotificationManager.notify(notificationId, notificationBuilder.build());
+    }
+  }
+
+  /**
+   * Build a notification.
+   *
+   * @param text          the text of the notification
+   * @param pendingIntent the body, pending intent for the notification
+   * @param extras        extras passed with the notification
+   * @return the builder
+   */
+
+  @RequiresApi(api = Build.VERSION_CODES.O)
+  public void buildNotificationUI(int notificationId, String text, PendingIntent pendingIntent, Bundle extras) {
+    int iconIdentifier = getResources().getIdentifier("ic_launcher", "mipmap", getPackageName());
+    if (iconIdentifier == 0) {
+      iconIdentifier = getResources().getIdentifier("ic_launcher", "drawable", getPackageName());
+    }
+
+    NotificationCompat.Builder mBuilder = new NotificationCompat.Builder(getApplicationContext(), VOICE_CHANNEL);
+
+    int incomingCallAppNameId = getResources().getIdentifier("incoming_call_app_name", "string", getPackageName());
+
+    NotificationCompat.BigTextStyle bigText = new NotificationCompat.BigTextStyle();
+    bigText.setBigContentTitle(text);
+    bigText.setSummaryText(getResources().getString(R.string.incoming_notif_subtitle));
+    mBuilder.setContentIntent(pendingIntent);
+    mBuilder.setSmallIcon(iconIdentifier);
+    mBuilder.setContentText(getString(incomingCallAppNameId));
+    mBuilder.setLargeIcon(BitmapFactory.decodeResource(getResources(), R.mipmap.ic_launcher));
+    mBuilder.setPriority(Notification.PRIORITY_MAX);
+    mBuilder.setCategory(NotificationCompat.CATEGORY_CALL);
+    mBuilder.setExtras(extras);
+    mBuilder.setStyle(bigText);
+    mBuilder.setFullScreenIntent(pendingIntent, true);
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      NotificationChannel channel = new NotificationChannel(
+        VOICE_CHANNEL,
+        "Primary Voice Channel",
+        NotificationManager.IMPORTANCE_MAX);
+
+      channel.setLightColor(Color.RED);
+      channel.setLockscreenVisibility(Notification.VISIBILITY_PRIVATE);
+      mNotificationManager.createNotificationChannel(channel);
+      mBuilder.setChannelId(VOICE_CHANNEL);
+    }
+    mNotificationManager.notify(notificationId, mBuilder.build());
+  }
+
+
+  /*
+   * Send the IncomingCallMessage to the Plugin
+   */
+  private void sendCallInviteToPlugin(CallInvite incomingCallMessage, int notificationId) {
+    Intent intent = new Intent(TwilioVoicePlugin.ACTION_INCOMING_CALL);
+    intent.putExtra(TwilioVoicePlugin.INCOMING_CALL_INVITE, incomingCallMessage);
+    intent.putExtra(TwilioVoicePlugin.INCOMING_CALL_NOTIFICATION_ID, notificationId);
+    intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+    LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
+  }
+
+  /*
+   * Send the CancelledCallMessage to the Plugin
+   */
+  private void sendCancelledCallToPlugin(int notificationId) {
+    Log.d(LOG_TAG, "sendCancelledCallToPlugin");
+    Intent intent = new Intent(TwilioVoicePlugin.ACTION_CANCELLED_CALL);
+    intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+    LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
   }
 }
