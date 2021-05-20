@@ -11,7 +11,7 @@
     "precommit-msg": "echo 'Pre-commit checks...' && exit 0",
     "test": "npm run build && npm run lint && npm run jasmine"
   },
-  "repository": "git@github.com:aloware/cordova-plugin-twiliovoicesdk.git",
+  "repository": "git@github.com:aloware/cordova-plugin-push.git",
   "keywords": [
     "ecosystem:cordova",
     "cordova-ios",
@@ -21,8 +21,8 @@
   ],
   "author": "Aloware",
   "license": "MIT",
-  "bugs": "https://github.com/aloware/cordova-plugin-twiliovoicesdk/issues",
-  "homepage": "https://github.com/aloware/cordova-plugin-twiliovoicesdk#readme",
+  "bugs": "https://github.com/aloware/cordova-plugin-push/issues",
+  "homepage": "https://github.com/aloware/cordova-plugin-push#readme",
   "devDependencies": {
     "@babel/cli": "^7.12.10",
     "@babel/core": "^7.12.10",
