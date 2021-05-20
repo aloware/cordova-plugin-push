@@ -30,7 +30,7 @@
 To install from the command line:
 
 ```bash
-cordova plugin add cordova-aloware-push-plugin
+cordova plugin add cordova-plugin-push-aloware
 ```
 
 To configure the `SENDER_ID`, place your `google-services.json` (Android) and/or `GoogleService-Info.plist` in the root folder of your project and then add the following lines into your config.xml.
