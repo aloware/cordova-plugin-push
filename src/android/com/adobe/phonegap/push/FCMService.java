@@ -38,6 +38,7 @@ import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 import com.aloware.talk.R;
 import com.google.firebase.messaging.FirebaseMessagingService;
 import com.google.firebase.messaging.RemoteMessage;
+import com.phonegap.plugins.twiliovoice.CallRingtoneManager;
 import com.phonegap.plugins.twiliovoice.TwilioVoicePlugin;
 import com.phonegap.plugins.twiliovoice.fcm.VoiceFirebaseMessagingService;
 import com.twilio.voice.CallException;
@@ -1114,7 +1115,7 @@ public class FCMService extends FirebaseMessagingService implements PushConstant
 
   private void notify(CallInvite callInvite, int notificationId) {
     String callSid = callInvite.getCallSid();
-    Intent intent = getPackageManager().getLaunchIntentForPackage(getPackageName());
+    Intent intent = new Intent(this, TwilioVoicePlugin.class);
     intent.setAction(TwilioVoicePlugin.ACTION_INCOMING_CALL);
     intent.putExtra(TwilioVoicePlugin.INCOMING_CALL_NOTIFICATION_ID, notificationId);
     intent.putExtra(TwilioVoicePlugin.INCOMING_CALL_INVITE, callInvite);
@@ -1178,17 +1179,14 @@ public class FCMService extends FirebaseMessagingService implements PushConstant
 
     int incomingCallAppNameId = getResources().getIdentifier("incoming_call_app_name", "string", getPackageName());
 
-    NotificationCompat.BigTextStyle bigText = new NotificationCompat.BigTextStyle();
-    bigText.setBigContentTitle(text);
-    bigText.setSummaryText(getResources().getString(R.string.incoming_notif_subtitle));
+    mBuilder.setContentTitle(getString(incomingCallAppNameId));
     mBuilder.setContentIntent(pendingIntent);
     mBuilder.setSmallIcon(iconIdentifier);
-    mBuilder.setContentText(getString(incomingCallAppNameId));
+    mBuilder.setContentText(text);
     mBuilder.setLargeIcon(BitmapFactory.decodeResource(getResources(), R.mipmap.ic_launcher));
     mBuilder.setPriority(Notification.PRIORITY_MAX);
     mBuilder.setCategory(NotificationCompat.CATEGORY_CALL);
     mBuilder.setExtras(extras);
-    mBuilder.setStyle(bigText);
     mBuilder.setFullScreenIntent(pendingIntent, true);
 
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -1203,6 +1201,8 @@ public class FCMService extends FirebaseMessagingService implements PushConstant
       mBuilder.setChannelId(VOICE_CHANNEL);
     }
     mNotificationManager.notify(notificationId, mBuilder.build());
+
+    CallRingtoneManager.getInstance(this).play(this);
   }
 
 
@@ -1225,5 +1225,6 @@ public class FCMService extends FirebaseMessagingService implements PushConstant
     Intent intent = new Intent(TwilioVoicePlugin.ACTION_CANCELLED_CALL);
     intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
     LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
+    CallRingtoneManager.getInstance(this).stop();
   }
 }
