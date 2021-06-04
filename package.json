@@ -1,6 +1,6 @@
 {
   "name": "cordova-plugin-push-aloware",
-  "version": "2.1.3",
+  "version": "2.1.4",
   "description": "Register and receive push notifications for aloware use.",
   "scripts": {
     "build": "babel src/js --out-dir www",
